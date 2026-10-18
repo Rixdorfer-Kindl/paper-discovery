@@ -1,7 +1,11 @@
 # Paper Discovery (seed papers → ranked new papers)
 
-FastAPI backend + one static HTML page. Pre-filled with 5 Baker-lab protein-design seeds
-(RFdiffusion, ProteinMPNN, RoseTTAFold, RoseTTAFold All-Atom, network hallucination).
+Give it a research question and a handful of papers you already know. It finds new papers around them,
+ranks them, and shows why each one surfaced and what supports that explanation.
+Built for the Research Paper Discovery track of Nebius Build Week Hackathon in partnership with NVIDIA.
+Pre-filled example: protein AI design, seeded with five
+Baker-lab papers (RFdiffusion, ProteinMPNN, RoseTTAFold, RoseTTAFold All-Atom, network hallucination).
+I also built it as a practical tool for my own protein AI design project
 
 ## Run locally
 ```bash
@@ -31,13 +35,6 @@ All model calls are OpenAI-compatible and configured by env vars (see `.env.exam
 No code change needed. Embeddings can come from a different provider than the chat model.
 
 ## Deploy on Nebius
-The `Dockerfile` serves the app on port 8000. Deploy it as a Serverless **Endpoint** following
-https://docs.nebius.com/serverless/overview, passing the env vars from `.env.example` as secrets.
-Model inference stays on Token Factory, so the app and the model endpoint are hosted separately.
+TBD
 
-## Not verified yet (check these first)
-- Real OpenAlex / Token Factory / Tavily calls were not run (the build sandbox blocked those hosts).
-  Only the pipeline logic was tested, with mocked services.
-- `EMBED_MODEL` default is a guess from the docs; confirm the exact id in the Token Factory model list.
-- `LLM_MODEL` default is the model named in the workshop notebook. If it emits long reasoning text and
-  `max_tokens` (900) cuts the JSON off, reviews show "unparsable output": raise `max_tokens` in `llm_json()`.
+
