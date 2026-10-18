@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Discovery</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --mut:#6b6b66; --line:#e2e0da; --acc:#2a5db0; --ok:#2d7a46; --warn:#a15c00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#17171a; --fg:#ececea; --mut:#9a9a94; --line:#2c2c31; --acc:#7fa8ee; --ok:#6cc58a; --warn:#e0a24a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--mut); margin: 0 0 20px; }
+  label { display:block; font-weight:600; margin: 14px 0 4px; }
+  textarea, input, select { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px;
+    background:transparent; color:inherit; font:inherit; }
+  textarea { resize: vertical; }
+  .row { display:flex; gap:12px; align-items:end; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:120px; }
+  button { padding:9px 18px; border:0; border-radius:6px; background:var(--acc); color:#fff; font:inherit; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--acc); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:wait; }
+  #status { margin:16px 0 0; color:var(--mut); }
+  details { margin: 14px 0; border:1px solid var(--line); border-radius:6px; padding:8px 12px; }
+  summary { cursor:pointer; font-weight:600; }
+  ol.trace { margin:8px 0 0; padding-left:20px; color:var(--mut); font-size:13px; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:12px 0; }
+  .card h3 { margin:0 0 4px; font-size:16px; }
+  .card h3 a { color:var(--acc); text-decoration:none; }
+  .meta { color:var(--mut); font-size:13px; }
+  .scores { font-size:12px; color:var(--mut); margin:6px 0; }
+  .scores b { color:var(--fg); }
+  blockquote { margin:6px 0; padding:4px 10px; border-left:3px solid var(--line); color:var(--mut); font-size:13px; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); }
+  .conn { font-size:13px; }
+  .web a { margin-right:12px; font-size:13px; color:var(--acc); }
+  .err { color:#c0392b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Paper Discovery</h1>
+  <p class="sub">Seed papers + a research question &rarr; ranked new papers, with traceable reasons.</p>
+
+  <label for="q">Research question</label>
+  <textarea id="q" rows="2">Deep-learning methods for de novo protein design: generative backbone design, sequence design, structure prediction, and their experimental validation</textarea>
+
+  <label for="seeds">Seed papers (one DOI or title per line)</label>
+  <textarea id="seeds" rows="6">10.1038/s41586-023-06415-8
+10.1126/science.add2187
+10.1126/science.abj8754
+10.1126/science.adl2528
+10.1038/s41586-021-04184-w</textarea>
+
+  <div class="row">
+    <div><label for="topn">Results</label><input id="topn" type="number" min="1" max="30" value="10"></div>
+    <div><label for="lang">Explanations in</label>
+      <select id="lang"><option>中文</option><option>English</option></select></div>
+    <div><button id="go">Discover</button> <button id="dl" class="ghost" disabled>Download JSON</button></div>
+  </div>
+
+  <p id="status"></p>
+  <div id="out"></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let last = null;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u || "") ? u : "#";
+
+function card(r) {
+  const s = r.scores;
+  const authors = r.authors.join(", ") + (r.authors.length >= 6 ? " et al." : "");
+  const ev = r.evidence
+    ? `<blockquote>“${esc(r.evidence)}” <span class="${r.evidence_verified ? "ok" : "warn"}">${r.evidence_verified ? "✓ found in abstract" : "⚠ not found verbatim in abstract"}</span></blockquote>` : "";
+  const web = r.web && r.web.length
+    ? `<div class="web">${r.web.map(w => `<a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.title)}</a>`).join("")}</div>` : "";
+  return `<div class="card">
+    <h3>${r.rank}. <a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a></h3>
+    <div class="meta">${esc(authors)} · ${esc(r.year)} · ${esc(r.venue || "venue n/a")} · ${r.cited_by_count} citations ·
+      <a href="${safeUrl(r.openalex_url)}" target="_blank" rel="noopener">OpenAlex</a>${r.doi ? ` · DOI ${esc(r.doi)}` : ""}</div>
+    <div class="scores">final <b>${s.final}</b> · LLM <b>${s.llm ?? "–"}</b>/10 · graph <b>${s.graph}</b> · semantic <b>${s.semantic}</b></div>
+    ${r.reason ? `<div>${esc(r.reason)}</div>` : ""}
+    ${ev}
+    ${r.uncertainty ? `<div class="meta">Uncertainty: ${esc(r.uncertainty)}</div>` : ""}
+    <div class="conn meta">Why it surfaced: ${esc(r.connection)}</div>
+    ${web}
+    ${r.abstract ? `<details><summary>Abstract</summary><p>${esc(r.abstract)}</p></details>` : ""}
+  </div>`;
+}
+
+function render(d) {
+  const cfg = d.config;
+  let h = `<details><summary>Agent trace (${d.trace.length} steps) · LLM: ${esc(cfg.llm || "off")} · embeddings: ${esc(cfg.embeddings || "off")} · Tavily: ${cfg.tavily ? "on" : "off"}</summary>
+    <ol class="trace">${d.trace.map(t => `<li class="${t.startsWith("WARNING") ? "warn" : ""}">${esc(t)}</li>`).join("")}</ol></details>`;
+  h += `<details><summary>Seeds used (${d.seeds.length})</summary><ol class="trace">${d.seeds.map(s => `<li><a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a> (${esc(s.year)})</li>`).join("")}</ol></details>`;
+  if (d.web_leads.length)
+    h += `<details><summary>Web leads from Tavily (not verified as papers)</summary><ul>${d.web_leads.map(w => `<li><a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.title)}</a></li>`).join("")}</ul></details>`;
+  h += d.results.map(card).join("");
+  $("out").innerHTML = h;
+}
+
+$("go").onclick = async () => {
+  const seeds = $("seeds").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (!seeds.length || !$("q").value.trim()) { $("status").textContent = "Need a question and at least one seed."; return; }
+  $("go").disabled = true; $("out").innerHTML = "";
+  $("status").textContent = "Working… (OpenAlex → scoring → LLM review → web search). Usually 30–90 s.";
+  try {
+    const r = await fetch("/api/discover", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ question: $("q").value.trim(), seeds, top_n: +$("topn").value || 10, lang: $("lang").value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    last = d; $("dl").disabled = false; $("status").textContent = `${d.results.length} papers.`; render(d);
+  } catch (e) { $("status").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("go").disabled = false;
+};
+$("dl").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(last, null, 2)], {type: "application/json"}));
+  a.download = "discovery.json"; a.click();
+};
+</script>
+</body>
+</html>
